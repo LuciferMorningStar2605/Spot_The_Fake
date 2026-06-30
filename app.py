@@ -19,9 +19,6 @@ st.set_page_config(
 # Custom premium styling
 st.markdown("""
 <style>
-    .main {
-        background-color: #f8f9fa;
-    }
     .title {
         font-family: 'Outfit', 'Inter', sans-serif;
         color: #1e293b;
@@ -51,6 +48,7 @@ st.markdown("""
         box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
         text-align: center;
         margin-top: 10px;
+        color: #1e293b;
     }
 </style>
 """, unsafe_allow_html=True)
