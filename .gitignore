@@ -1,6 +1,8 @@
 # Exclude large dataset directories
 real/
 screen/
+real_world/
+spoof/
 ML Latest Assignment.zip
 
 # Swift compilation caches and temporary scripts

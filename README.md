@@ -6,27 +6,26 @@ This repository contains the solution to identify whether an image is a **real p
 
 ## 1. Approach & Design Decisions
 
-### Feature Engineering (123 Features)
-Rather than relying on resource-intensive deep learning models (which are prone to environment conflicts and require heavy compute), we build a classic computer vision feature extraction pipeline. We extract **123 hand-crafted features** capturing sharpness, color properties, and periodic textures (moiré patterns):
+### Feature Engineering (80 Features)
+Rather than relying on resource-intensive deep learning models (which are prone to environment conflicts and require heavy compute), we build a classic computer vision feature extraction pipeline. We extract **80 hand-crafted features** capturing sharpness, glare, texture uniformity, and periodic textures (moiré patterns):
 
-1. **Sharpness & Edges (3 features)**:
+1. **Sharpness, Edges & Glare (7 features)**:
    - **Laplacian Variance**: Measures the sharpness/focus of the image. Screen photos often have flat surfaces or localized blur.
    - **Sobel Magnitude (Mean & Std)**: Measures edge density and transitions.
-2. **Color Statistics (18 features)**:
-   - **RGB Channels**: Mean, standard deviation, 10th percentile, and 90th percentile for each channel. Screen photos typically have shifted color temperatures, backlights, and clipped whites/blacks.
-   - **HSV Channels**: Mean and standard deviation of Hue, Saturation, and Value to capture saturation characteristics.
-3. **Color Histograms (24 features)**:
-   - 8-bin normalized histograms for each RGB channel to capture the overall distribution of colors and contrast.
-4. **Moiré Frequency Profile (78 features)**:
-   - When a camera photographs a screen, the interference between the screen's subpixels and the camera's sensor grid creates a **moiré pattern** (visible as periodic stripes or grid textures).
+   - **Glare Statistics (glare %, max brightness, bright region std)**: Captures screen backlight highlights and dynamic range clipping.
+   - **Texture Uniformity**: Standard deviation of standard deviations across 8x8 image cells to separate uniform display noise from natural texture.
+2. **Grayscale Moiré FFT concentric rings (67 features)**:
    - We compute the **2D Fast Fourier Transform (FFT)** magnitude spectrum of the 512x512 downsampled image.
    - We apply a high-pass filter by subtracting a Gaussian-blurred version of the FFT to isolate sharp spikes/peaks representing periodic grid frequencies.
-   - We divide the 2D frequency domain into **12 concentric ring bins** (radius 20 to 250 pixels).
+   - We divide the 2D frequency domain into **10 concentric ring bins** (radius 20 to 250 pixels).
    - In each ring, we compute the mean, standard deviation, and maximum value for both the raw FFT magnitude and the high-pass filtered FFT magnitude.
+   - **Isolated Peaks Count**: Detect local maxima in a 9x9 neighborhood in high frequencies.
+3. **Chrominance Color-Aliasing Peaks (6 features)**:
+   - **Peak-to-Noise Ratio (PMR) and Maximum Peak value** of the high-pass normalized FFT magnitude in Saturation, Cr, and Cb channels. This directly isolates the periodic chromatic moiré bands, which survive downsampling and JPEG compression.
 
 ### Model Architecture
-- **Classifier**: Support Vector Machine (SVM) with an **RBF (Radial Basis Function) Kernel** ($C=10.0$) and probability output.
-- **Normalization**: `StandardScaler` to normalize the 123 features before feeding them to the SVM.
+- **Classifier**: Support Vector Machine (SVM) with an **RBF (Radial Basis Function) Kernel** ($C=2.0$) and probability output.
+- **Normalization**: `StandardScaler` to normalize the 80 features before feeding them to the SVM.
 
 ---
 
@@ -37,12 +36,8 @@ We evaluated the pipeline using **Stratified 5-Fold Cross-Validation** on the pr
 | Model | Cross-Validation Accuracy | Standard Deviation |
 | :--- | :---: | :---: |
 | **SVM (RBF Kernel)** | **98.00%** | **±2.45%** |
-| **Random Forest** | **97.00%** | **±4.00%** |
-| **Logistic Regression** | **94.00%** | **±5.83%** |
-| **SVM (Linear Kernel)** | **90.00%** | **±3.16%** |
-| **Gradient Boosting** | **89.00%** | **±8.00%** |
 
-Our selected model **SVM (RBF Kernel)** delivers an outstanding **98% accuracy** and is highly robust.
+Our selected model **SVM (RBF Kernel, C=2.0)** delivers an outstanding **98% accuracy** and is highly robust.
 
 ---
 
@@ -51,9 +46,9 @@ Our selected model **SVM (RBF Kernel)** delivers an outstanding **98% accuracy**
 ### Latency
 Measurements taken on a **Macbook CPU (Apple M3)**:
 
-*   **JPG Image**: **~145 ms** total internal execution time (including image loading, downsampling to 512x512, feature extraction, and SVM prediction).
-*   **HEIC Image**: **~900 ms** total internal execution time (contains ~620 ms overhead from decoding high-resolution HEIC files using CPU-based `pillow-heif` library).
-*   **Cold Startup / Process Overhead**: ~1.5 seconds when run as a standalone script (e.g., `python predict.py image.jpg`) due to one-time Python startup and `scikit-learn` import overhead. In production (e.g. web API or app process), this import occurs once at startup, so the per-image latency is the internal speed of **~145 ms**.
+*   **JPG Image**: **~75 ms** total internal execution time (including image loading, downsampling to 512x512, color conversions, feature extraction, and SVM prediction).
+*   **HEIC Image**: **~750 ms** total internal execution time (contains ~670 ms overhead from decoding high-resolution HEIC files using CPU-based `pillow-heif` library).
+*   **Cold Startup / Process Overhead**: ~1.5 seconds when run as a standalone script (e.g., `python predict.py image.jpg`) due to one-time Python startup and `scikit-learn` import overhead. In production (e.g. web API or app process), this import occurs once at startup, so the per-image latency is the internal speed of **~75 ms**.
 
 ### Cost per Image
 *   **On-Device (Client-side / Mobile)**: **$0.00 (Free)**. Since the model and scaler are small (~500 KB total) and use basic numpy/cv2 operations, they can run entirely on the user's phone or client app, completely offloading server costs.
